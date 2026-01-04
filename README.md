@@ -61,6 +61,11 @@ Found 29 coins with arbitrage (>1% spread) in 4.5s  |  Fetched 190 prices from 1
 
 This tool is for informational purposes only. High spread percentages may indicate low liquidity, data errors, or different token versions. Always verify manually before trading.
 
+## Donation
+
+EVM Address (xppaicyber.base.eth | xppaicyber.eth):
+`0xE11018C82D4405bDBc7414eC988Fd08351666666`
+
 ## License
 
 ISC

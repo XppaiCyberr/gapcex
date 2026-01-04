@@ -1,4 +1,5 @@
 const ccxt = require('ccxt');
+const { initLip, Lipgloss } = require('charsm');
 
 const TIMEOUT_MS = 4000;
 
@@ -15,7 +16,6 @@ const TOP_COINS = [
     'LDO', 'AERO', 'ETHFI', 'INJ', 'PIPPIN', 'TIA', 'CHZ', '2Z', 'STRK'
 ];
 
-// Use ALL ccxt exchanges
 const EXCHANGES = ccxt.exchanges;
 
 const withTimeout = (promise, ms) => Promise.race([
@@ -24,12 +24,56 @@ const withTimeout = (promise, ms) => Promise.race([
 ]);
 
 async function main() {
+    // Initialize charsm
+    const isInit = await initLip();
+    if (!isInit) {
+        console.error('Failed to initialize charsm');
+        return;
+    }
+    const lip = new Lipgloss();
+
+    // Create styles
+    lip.createStyle({
+        id: 'header',
+        canvasColor: { color: '#7D56F4' },
+        border: { type: 'rounded', foreground: '#7D56F4', sides: [true] },
+        padding: [0, 2, 0, 2],
+        margin: [1, 0, 1, 0],
+        bold: true,
+    });
+
+    lip.createStyle({
+        id: 'stats',
+        canvasColor: { color: '#FAFAFA' },
+        padding: [0, 1, 0, 1],
+        margin: [0, 0, 1, 0],
+    });
+
+    lip.createStyle({
+        id: 'success',
+        canvasColor: { color: '#00FF00' },
+        bold: true,
+    });
+
+    lip.createStyle({
+        id: 'top10',
+        canvasColor: { color: '#FFD700' },
+        border: { type: 'rounded', foreground: '#FFD700', sides: [true] },
+        padding: [1, 2, 1, 2],
+        margin: [1, 0, 0, 0],
+    });
+
     const start = Date.now();
     const totalRequests = TOP_COINS.length * EXCHANGES.length;
 
-    console.log(`\n🔍 GapCex - CEX Arbitrage Scanner`);
-    console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
-    console.log(`📊 Coins: ${TOP_COINS.length} | 🏦 Exchanges: ${EXCHANGES.length} | 📡 Requests: ${totalRequests}\n`);
+    // Compact header with stats
+    const date = new Date().toLocaleString();
+    const headerParams = {
+        value: `GapCex - CEX Arbitrage Scanner  |  ${date}  |  Coins: ${TOP_COINS.length}  |  Exchanges: ${EXCHANGES.length}`,
+        id: 'header'
+    };
+    const header = lip.apply(headerParams);
+    console.log(header);
 
     const allPrices = {};
     TOP_COINS.forEach(c => allPrices[c] = []);
@@ -48,7 +92,7 @@ async function main() {
     const updateProgress = () => {
         const pct = ((completed / totalRequests) * 100).toFixed(1);
         const elapsed = ((Date.now() - start) / 1000).toFixed(1);
-        process.stdout.write(`\r⏳ Progress: ${pct}% (${completed}/${totalRequests}) | ✅ Found: ${found} prices | ⏱️ ${elapsed}s`);
+        process.stdout.write(`\rProgress: ${pct}% (${completed}/${totalRequests}) | Found: ${found} prices | ${elapsed}s`);
     };
 
     // Fetch all prices in parallel with progress
@@ -77,10 +121,6 @@ async function main() {
 
     results.forEach(r => allPrices[r.coin].push(r));
 
-    // Clear progress line
-    process.stdout.write('\r' + ' '.repeat(80) + '\r');
-    console.log(`✅ Fetched ${results.length} prices from ${new Set(results.map(r => r.exchange)).size} exchanges\n`);
-
     // Calculate arbitrage
     const opportunities = TOP_COINS
         .map(coin => {
@@ -90,28 +130,82 @@ async function main() {
             return { coin, low, high, spreadPct: ((high.price - low.price) / low.price) * 100, count: prices.length };
         })
         .filter(Boolean)
+        .filter(o => o.spreadPct > 1) // Only show spreads > 1%
         .sort((a, b) => b.spreadPct - a.spreadPct);
+    const elapsed = ((Date.now() - start) / 1000).toFixed(1);
+    const summaryText = `Found ${opportunities.length} coins with arbitrage (>1% spread) in ${elapsed}s  |  Fetched ${results.length} prices from ${new Set(results.map(r => r.exchange)).size} exchanges`;
 
-    console.log('Coin     | Buy From        | Price         | Sell To         | Price         | Spread  | #');
-    console.log('━'.repeat(105));
+    // Clear progress line
+    process.stdout.write('\r' + ' '.repeat(80) + '\r');
 
-    opportunities.forEach(o => {
+    // Create table for results with $100 profit simulation
+    const INVESTMENT = 100;
+    const rows = opportunities.map(o => {
         const fmt = p => p < 0.0001 ? p.toFixed(10) : p < 0.01 ? p.toFixed(8) : p < 1 ? p.toFixed(6) : p.toLocaleString();
-        console.log(
-            `${o.coin.padEnd(8)} | ${o.low.exchange.padEnd(15)} | $${fmt(o.low.price).padEnd(12)} | ` +
-            `${o.high.exchange.padEnd(15)} | $${fmt(o.high.price).padEnd(12)} | ${o.spreadPct.toFixed(2).padStart(6)}% | ${o.count}`
-        );
+        const margin = (INVESTMENT + (INVESTMENT * o.spreadPct / 100)).toFixed(2);
+        return [
+            o.coin,
+            o.low.exchange,
+            `$${fmt(o.low.price)}`,
+            o.high.exchange,
+            `$${fmt(o.high.price)}`,
+            `${o.spreadPct.toFixed(2)}%`,
+            `$100->$${margin}`,
+            o.count.toString()
+        ];
     });
 
-    const elapsed = ((Date.now() - start) / 1000).toFixed(1);
-    console.log(`\n✅ Found ${opportunities.length} coins with arbitrage opportunities in ${elapsed}s`);
+    const table = lip.newTable({
+        data: {
+            headers: ['Coin', 'Buy From', 'Buy Price', 'Sell To', 'Sell Price', 'Spread', '$100 Margin', '#'],
+            rows: rows
+        },
+        table: { border: 'rounded', color: '99', width: 120 },
+        header: { color: '212', bold: true },
+        rows: { even: { color: '246' } }
+    });
+    console.log(table);
 
     if (opportunities.length > 0) {
-        console.log(`\n🔥 Top 10 Arbitrage Opportunities:`);
-        opportunities.slice(0, 10).forEach((o, i) => {
-            console.log(`   ${(i + 1).toString().padStart(2)}. ${o.coin.padEnd(8)} ${o.spreadPct.toFixed(2).padStart(6)}% (${o.low.exchange} → ${o.high.exchange})`);
+        // Color styles for different spread levels
+        lip.createStyle({ id: 'high', canvasColor: { color: '#00FF00' }, bold: true }); // Green >20%
+        lip.createStyle({ id: 'medium', canvasColor: { color: '#FFD700' }, bold: true }); // Yellow 5-20%
+        lip.createStyle({ id: 'low', canvasColor: { color: '#00BFFF' } }); // Cyan <5%
+
+        // Top 20 in 2 columns (left 1-10, right 11-20)
+        const top20 = opportunities.slice(0, 20);
+        const leftCol = top20.slice(0, 10);
+        const rightCol = top20.slice(10, 20);
+
+        const formatLine = (o, i) => {
+            const line = `${(i + 1).toString().padStart(2)}. ${o.coin.padEnd(6)} ${o.spreadPct.toFixed(2).padStart(7)}% ${o.low.exchange.padEnd(10)}->${o.high.exchange}`;
+            let styleId;
+            if (o.spreadPct >= 20) styleId = 'high';
+            else if (o.spreadPct >= 5) styleId = 'medium';
+            else styleId = 'low';
+            return lip.apply({ value: line, id: styleId });
+        };
+
+        const leftLines = leftCol.map((o, i) => formatLine(o, i)).join('\n');
+        const rightLines = rightCol.map((o, i) => formatLine(o, i + 10)).join('\n');
+
+        lip.createStyle({
+            id: 'topbox',
+            border: { type: 'rounded', foreground: '#FFD700', sides: [true] },
+            padding: [1, 2, 1, 2],
+            margin: [1, 0, 0, 0],
         });
+
+        const leftBox = lip.apply({ value: `Top 20 Arbitrage\n\n${leftLines}`, id: 'topbox' });
+        const rightBox = lip.apply({ value: `Opportunities\n\n${rightLines}`, id: 'topbox' });
+
+        const combined = lip.join({ direction: 'horizontal', elements: [leftBox, rightBox], position: 'top' });
+        console.log(combined);
     }
+
+    // Print summary at the very bottom
+    lip.createStyle({ id: 'summary', canvasColor: { color: '#00FF00' }, bold: true, margin: [1, 0, 1, 0] });
+    console.log(lip.apply({ value: summaryText, id: 'summary' }));
 }
 
 main();

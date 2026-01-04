@@ -1,0 +1,16 @@
+{
+  "name": "gapcex",
+  "version": "1.0.0",
+  "description": "CEX arbitrage scanner utilizing ccxt to find price gaps and check arbitrage opportunities across 100+ crypto exchanges",
+  "main": "gapcex.js",
+  "scripts": {
+    "start": "node gapcex.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "packageManager": "pnpm@10.27.0",
+  "dependencies": {
+    "ccxt": "^4.5.30"
+  }
+}

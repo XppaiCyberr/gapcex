@@ -68,4 +68,4 @@ EVM Address (xppaicyber.base.eth | xppaicyber.eth):
 
 ## License
 
-ISC
+MIT
